@@ -1,18 +1,34 @@
 import numpy
 import sys
 import requests
+import re
 from bs4 import BeautifulSoup
 import pandas as pd
 from pandas import Series, DataFrame
+from googletrans import Translator
 
 class WebScrap:
     def __init__(self):
         self.keyWord = None
         self.Sent = None
         self.Shorten = None
+        self.trans = None
+
+    # 半角小文字か判定
+    def islower(self,word):
+        lowerReg = re.compile(r'^[a-z]*$')
+        return lowerReg.match(word) is not None
+
+    #半角英字
+    def isalpha(self,word):
+        alphaReg = re.compile(r'^[a-zA-Z]+$')
+        return alphaReg.match(word) is not None
 
     # アルクで単語検索。1番最初の検索結果を返す
     def word2AlcSent(self,word):
+        if self.islower(word):
+            # アルクで英単語を検索する場合、頭文字が大文字である必要がある
+            word = word.capitalize()
         self.keyWord = word
         base_url = "http://eow.alc.co.jp/search"
         query = {}
@@ -31,6 +47,27 @@ class WebScrap:
                     pass
         self.Sent = text
         return text
+
+    # グーグルの翻訳
+    def word2GgTrancelate(self,word):
+        ret = None
+        if word is None:
+            print("Err | Input word is invalid") 
+            return ret
+
+        translator = Translator()
+        if self.isalpha(word):# en -> ja
+            try: #エラー処理は暫定策、要検討
+                ret = translator.translate(word, src='en', dest='ja').text
+            except:
+                    pass
+        else: # ja -> en
+            try:
+                ret = translator.translate(word, src='ja', dest='en').text
+            except:
+                    pass
+        self.trans = ret
+        return ret
 
     #　アルクの検索結果から省略語を取得する
     def AlcSent2Shorten(self,Sent):# Shorten : 略語
@@ -55,21 +92,26 @@ class WebScrap:
     def mainFile(self,fin="wordListIn.xlsx",fout="wordListOut.xlsx"):
         wordList = pd.read_excel(fin)
         numMax = wordList.shape[0]
-        outData = pd.DataFrame([], columns=['word','shorten','sentence'], index=range(numMax))
+        outData = pd.DataFrame([], columns=['単語','Google翻訳','ALC省略語','ALC説明文'], index=range(numMax))
 
         for num in range(numMax):
+            self.__init__()
             word = wordList.loc[num].values[0]
+            trans = self.word2GgTrancelate(word)
+            print("翻訳 : ",trans)
             sent = self.word2AlcSent(word)
             print("検索結果 : ",sent)
             shorten = self.AlcSent2Shorten(sent)
             print("略語 : ",shorten)
-            addRow = [self.keyWord,self.Shorten,self.Sent]
+            addRow = [self.keyWord,self.trans,self.Shorten,self.Sent]
             outData.iloc[num,:] = addRow
         outData.to_excel(fout, sheet_name='wordList')
         print(str(fout)+"の作成が完了しました。")
 
     # 単語から略語を検索する。
     def mainWord(self,word):
+        trans = self.word2GgTrancelate(word)
+        print("翻訳 : ",trans)
         sent = self.word2AlcSent(word)
         print("検索結果 : ",sent)
         shorten = self.AlcSent2Shorten(sent)
